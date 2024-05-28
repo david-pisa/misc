@@ -23,9 +23,9 @@ c = 2 * np.pi * freq * r / (3 * 0.544331)
 alpha = 2 * np.pi * freq / c
 
 # Create a VisPy canvas and scene
-canvas = scene.SceneCanvas(keys='interactive', show=True)
-canvas.size = 1920, 1080
-view = canvas.central_widget.add_view()
+canvas = scene.SceneCanvas(keys='interactive', size=(1920, 1080), show=True)
+grid = canvas.central_widget.add_grid()
+view = grid.add_view(row=1, col=0, row_span=9)
 view.camera = scene.cameras.TurntableCamera(up='z', azimuth=0, elevation=25, distance=2.5 * bounds)
 # Generate the initial meshgrid data
 t = 0
@@ -33,7 +33,6 @@ th = 0
 def get_gws(x, y, theta):
     return (amplitudec * np.cos(2 * np.arctan2(y, (x + 0.00001 * r / 3)) - 2 * theta + alpha * np.sqrt(x ** 2 + y ** 2)) /
             (20 * r / 3 + np.sqrt(x ** 2 + y ** 2)))
-    #return (100 * np.cos(2 * np.arctan(y / (x + 0.00001)) - theta + 0.544331 * np.sqrt(x**2 + y**2))) / (20 + np.sqrt(x**2 + y**2))
 
 # Generate data
 x = np.linspace(-bounds, bounds, points)
@@ -52,8 +51,11 @@ black_hole2 = scene.visuals.Sphere(radius=d2, edge_color=(0, 0, 0, 1), color=(0,
 black_hole2.transform = scene.transforms.STTransform(translate=(cm2 * np.cos(th - np.pi / 2), cm2 * np.sin(th - np.pi / 2), r))
 
 # Add text to the scene
-text = scene.visuals.Text('Gravitační vlny', color='white', font_size=2500, pos=(0,50, 30), anchor_x='center', anchor_y='top')
-view.add(text)
+view_text = grid.add_view(row=0, col=0)
+text = scene.visuals.Text('Dvě rotující černé díry', color='magenta', font_size=20, pos=(.5,  .5), anchor_x='center')
+view_text.camera = scene.PanZoomCamera(aspect=1)
+view_text.camera.set_range()
+view_text.add(text)
 
 
 # Update function for the animation
