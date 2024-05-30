@@ -1,9 +1,12 @@
+#!/usr/bin/env python3
+
 import numpy as np
 from vispy import app, scene, io
 from vispy.scene import Text
 from vispy.visuals import sphere
 import pygame
 import time
+import sys
 
 #pad init
 pygame.init()
@@ -44,8 +47,9 @@ caption1 = f'Černá díra 1 \n  Hmotnost = {m1} Sluncí \n  Průměr = {d1}'
 caption2 = f'Černá díra 2 \n  Hmotnost = {m2} Sluncí \n  Průměr = {d2}'
 
 # Create a VisPy canvas and scene
-canvas = scene.SceneCanvas(keys='interactive', size=(1920, 1080), show=True)
-#canvas = scene.SceneCanvas(keys='interactive', size=(1920, 1080), show=True, fullscreen=True)
+fullscreen = False if len(sys.argv) > 1 else True
+canvas = scene.SceneCanvas(keys='interactive', size=(1920, 1080), show=True,
+                           fullscreen=fullscreen)
 grid = canvas.central_widget.add_grid()
 view = grid.add_view(row=1, col=1, row_span=5, col_span=5, bgcolor=(1, 0, 0, 0.))
 view.camera = scene.cameras.TurntableCamera(up='z', azimuth=0, elevation=25, distance=2.5 * bounds)
@@ -93,7 +97,7 @@ view_text.add(text)
 view_match = grid.add_view(row=1, col=2, col_span=4)
 view_match.camera = scene.PanZoomCamera(aspect=1)
 view_match.camera.set_range()
-match_text = scene.visuals.Text('', color=(0.6, 0.039, 0.2), font_size=50, pos=(.5,  .0), anchor_x='center')
+match_text = scene.visuals.Text('', color=(0.6, 0.39, 0.2), font_size=50, pos=(.5,  .0), anchor_x='center')
 view_match.add(match_text)
 
 def show_match(text):
@@ -161,7 +165,7 @@ def pressed(key=None):
         btn = True
         ctick = time.time()
         ndiff = ctick - ltick
-        diff = ndiff if ndiff < 3 else diff
+        diff = ndiff if ndiff < 6 else diff
         ltick = ctick
     return btn
 
@@ -190,10 +194,11 @@ def update(event):
 
     # Sixth row - need to update
 
-    jfreq = 2*np.pi*(1/diff)/framerate if diff > 0 else 0
+    cfreq = (1/diff) if diff > 0 else 0
+    jfreq = 2*np.pi*cfreq/framerate if diff > 0 else 0
 
     if not btn:
-        diff = (diff*1.02) if 0 < diff < 20 else 0
+        diff = (diff*1.005) if 0 < diff < 20 else 0
 
     jdiff += jfreq
 
@@ -207,11 +212,15 @@ def update(event):
     else:
         show_match('')
 
-
     y = np.sin(t - jdiff)
     plot_hops.set_data(np.c_[t, y])
     # update text
-    text.text = f'''{caption1} \n  Poloha = ({pos1[0]:6.0f}, {pos1[1]:6.0f})\n{caption2}\n  Poloha = ({pos2[0]:6.0f}, {pos2[1]:6.0f})\nVzdálenost černých děr = {r}\nFrekvence rotace = {freq:5.3f} Hz'''
+    text.text = f'''{caption1} \n  Poloha = ({pos1[0]:6.0f}, {pos1[1]:6.0f})\n\
+    {caption2}\n  Poloha = ({pos2[0]:6.0f},{pos2[1]:6.0f})\n\
+    Vzdálenost černých děr = {r}\n\
+    \tFrekvence rotace = {freq:5.3f} Hz\n\
+    \tFrekvence skoku  = {cfreq:5.3f} Hz'''
+
 
 # Use a timer to animate the meshgrid
 timer = app.Timer(interval=1./framerate, connect=update, start=True)
