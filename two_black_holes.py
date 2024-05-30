@@ -20,9 +20,10 @@ else:
     pad = None
 
 #global timekeeping
-ltick, diff = 0, 0
+ltick, diff, ldiff = 0, 0, 0
 jdiff, jfreq = 0, 0
-btn = False
+cntr = 0
+key_jump = False
 
 #initial settings
 m1 = 6220
@@ -153,7 +154,7 @@ x_label.pos = 2 * np.pi * 5 + 0.5, -0.5
 y_label.pos = -1.5, 0.8
 
 def pressed(key=None):
-    global btn
+    global key_jump
     global diff, ltick
     btn = False
     if pad is not None and key is None:
@@ -161,19 +162,21 @@ def pressed(key=None):
             if pgevent.type == pygame.JOYBUTTONDOWN:
                 btn = True
         pygame.event.pump()
-    if key == 'j' or btn:
+    if key_jump or btn:
         btn = True
         ctick = time.time()
         ndiff = ctick - ltick
         diff = ndiff if ndiff < 6 else diff
         ltick = ctick
+        key_jump = False
     return btn
 
 # Update function for the animation
 def update(event):
     global t, th, dtheta, r, freq
-    global ltick, diff
+    global ltick, diff, ldiff, cntr
     global jfreq, jdiff
+    spd = 3
     #handle buttons
     btn = pressed()
 
@@ -188,38 +191,46 @@ def update(event):
 
     # Fifth row
     t = np.linspace(0, 2 * np.pi * 5, 1000)
-    y = np.sin(t - th)
+    y = np.sin((1/spd)*t - (th*spd))
     plot_sine.set_data(np.c_[t, y])
     #freq = (1/diff)
 
     # Sixth row - need to update
 
     cfreq = (1/diff) if diff > 0 else 0
-    jfreq = 2*np.pi*cfreq/framerate if diff > 0 else 0
-
-    if not btn:
-        diff = (diff*1.005) if 0 < diff < 20 else 0
+    jfreq = 2*np.pi*cfreq/framerate
 
     jdiff += jfreq
 
-    err = abs((jfreq - dtheta)/dtheta)
+    if btn:
+        jdiff = 0
+        ldiff = diff
+        cntr = 0
+
+    cntr += 1
+
+    if not btn and cntr > 100:
+        diff = (diff*np.exp(0.02)) if 0 < diff < 20 else 0
+        pass
+
+    err = abs((jfreq - (dtheta*spd))/(dtheta*spd))
 
     if err < 0.25:
-        print('match!')
         show_match('Shoda !')
     elif err < 0.5:
         show_match('Prihoriva...')
     else:
         show_match('')
 
-    y = np.sin(t - jdiff)
+    #y = np.sin(t - jdiff)
+    y = np.sin(t * spd * (jfreq) - (jdiff))
     plot_hops.set_data(np.c_[t, y])
     # update text
     text.text = f'''{caption1} \n  Poloha = ({pos1[0]:6.0f}, {pos1[1]:6.0f})\n\
-    {caption2}\n  Poloha = ({pos2[0]:6.0f},{pos2[1]:6.0f})\n\
-    Vzdálenost černých děr = {r}\n\
-    \tFrekvence rotace = {freq:5.3f} Hz\n\
-    \tFrekvence skoku  = {cfreq:5.3f} Hz'''
+{caption2}\n  Poloha = ({pos2[0]:6.0f},{pos2[1]:6.0f})\n\
+Vzdálenost černých děr = {r}\n\
+\tFrekvence rotace = {freq:5.3f} Hz\n\
+\tFrekvence skoku  = {cfreq/spd:5.3f} Hz'''
 
 
 # Use a timer to animate the meshgrid
@@ -227,10 +238,11 @@ timer = app.Timer(interval=1./framerate, connect=update, start=True)
 
 @canvas.events.key_press.connect
 def on_key_press(event):
+    global key_jump
     if event.key.name == 'Q':
         canvas.close()  # Close the window when 'Q' is pressed
     if event.key.name == 'J': #simulate keypad button
-        pressed('j')
+        key_jump = True
 
 def main():
     #print(app.use_app())
