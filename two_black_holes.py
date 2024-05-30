@@ -7,14 +7,19 @@ import time
 
 #pad init
 pygame.init()
-pygame.joystick.init()
 
-#pad = pygame.joystick.Joystick(0)
-#pad.init()
+if pygame.joystick.get_count() > 0:
+    print('Dancing pad detected')
+    pad = pygame.joystick.Joystick(0)
+    pad.init()
+else:
+    print('No pad detected, use "j" key to jump')
+    pad = None
 
 #global timekeeping
-ltick = 0
-diff = 1
+ltick, diff = 0, 0
+jdiff, jfreq = 0, 0
+btn = False
 
 #initial settings
 m1 = 6220
@@ -84,6 +89,17 @@ view_text.camera = scene.PanZoomCamera(aspect=1)
 view_text.camera.set_range()
 view_text.add(text)
 
+# Add target match  to the scene
+view_match = grid.add_view(row=1, col=2, col_span=4)
+view_match.camera = scene.PanZoomCamera(aspect=1)
+view_match.camera.set_range()
+match_text = scene.visuals.Text('', color=(0.6, 0.039, 0.2), font_size=50, pos=(.5,  .0), anchor_x='center')
+view_match.add(match_text)
+
+def show_match(text):
+    #global match_text, scene
+    match_text.text = text
+
 # Add text to the scene
 view_text = grid.add_view(row=1, col=5, row_span=4, col_span=2, bgcolor=(0, 1, 0, 0.))
 text = scene.visuals.Text('', color=(0.6, 0.039, 0.2), font_size=20, pos=(-1., 0), anchor_x='left')
@@ -98,6 +114,8 @@ view_sine = grid.add_view(row=5, col=0, col_span=7, bgcolor=(0, 1, 0, 0.))
 view_sine.add(plot_sine)
 view_sine.camera = scene.PanZoomCamera(aspect=1)
 view_sine.camera.set_range()
+view_sine.camera.set_range(x=(-np.pi/2., 2 * np.pi * 5 + np.pi / 2.), y=(-1, 1))
+
 # Adding x-axis and y-axis
 x_axis = scene.visuals.Line(color='white', parent=view_sine.scene)
 y_axis = scene.visuals.Line(color='white', parent=view_sine.scene)
@@ -116,6 +134,7 @@ view_hops = grid.add_view(row=6, col=0, col_span=7, bgcolor=(1, 0, 0, 0.))
 view_hops.add(plot_hops)
 view_hops.camera = scene.PanZoomCamera(aspect=1)
 view_hops.camera.set_range()
+view_hops.camera.set_range(x=(-np.pi/2., 2 * np.pi * 5 + np.pi / 2.), y=(-1, 1))
 
 # Adding x-axis and y-axis
 x_axis = scene.visuals.Line(color='white', parent=view_hops.scene)
@@ -129,21 +148,30 @@ y_label = scene.visuals.Text('Skok', color='white', font_size=20, parent=view_ho
 x_label.pos = 2 * np.pi * 5 + 0.5, -0.5
 y_label.pos = -1.5, 0.8
 
+def pressed(key=None):
+    global btn
+    global diff, ltick
+    btn = False
+    if pad is not None and key is None:
+        for pgevent in pygame.event.get():
+            if pgevent.type == pygame.JOYBUTTONDOWN:
+                btn = True
+        pygame.event.pump()
+    if key == 'j' or btn:
+        btn = True
+        ctick = time.time()
+        ndiff = ctick - ltick
+        diff = ndiff if ndiff < 3 else diff
+        ltick = ctick
+    return btn
 
 # Update function for the animation
 def update(event):
     global t, th, dtheta, r, freq
     global ltick, diff
+    global jfreq, jdiff
     #handle buttons
-    btn = False
-    for event in pygame.event.get():
-        if event.type == pygame.JOYBUTTONDOWN:
-            btn = True
-            print(f'Button {event.button} pressed!')
-            ctick = time.time()
-            diff = ctick - ltick
-            ltick = ctick
-    pygame.event.pump()
+    btn = pressed()
 
     th += dtheta
     Z = get_gws(X, Y, th)
@@ -158,29 +186,42 @@ def update(event):
     t = np.linspace(0, 2 * np.pi * 5, 1000)
     y = np.sin(t - th)
     plot_sine.set_data(np.c_[t, y])
-    view_sine.camera.set_range(x=(-np.pi/2., 2 * np.pi * 5 + np.pi / 2.), y=(-1, 1))
     #freq = (1/diff)
 
-
     # Sixth row - need to update
-    if btn:
-        y = np.sin(t - th + (diff-dtheta))
+
+    jfreq = 2*np.pi*(1/diff)/framerate if diff > 0 else 0
+
+    if not btn:
+        diff = (diff*1.02) if 0 < diff < 20 else 0
+
+    jdiff += jfreq
+
+    err = abs((jfreq - dtheta)/dtheta)
+
+    if err < 0.25:
+        print('match!')
+        show_match('Shoda !')
+    elif err < 0.5:
+        show_match('Prihoriva...')
     else:
-        y = np.sin(t - (th/diff))
-        diff += 0.1
+        show_match('')
+
+
+    y = np.sin(t - jdiff)
     plot_hops.set_data(np.c_[t, y])
-    view_hops.camera.set_range(x=(-np.pi/2., 2 * np.pi * 5 + np.pi / 2.), y=(-1, 1))
     # update text
     text.text = f'''{caption1} \n  Poloha = ({pos1[0]:6.0f}, {pos1[1]:6.0f})\n{caption2}\n  Poloha = ({pos2[0]:6.0f}, {pos2[1]:6.0f})\nVzdálenost černých děr = {r}\nFrekvence rotace = {freq:5.3f} Hz'''
-    
+
 # Use a timer to animate the meshgrid
 timer = app.Timer(interval=1./framerate, connect=update, start=True)
-
 
 @canvas.events.key_press.connect
 def on_key_press(event):
     if event.key.name == 'Q':
         canvas.close()  # Close the window when 'Q' is pressed
+    if event.key.name == 'J': #simulate keypad button
+        pressed('j')
 
 def main():
     #print(app.use_app())
