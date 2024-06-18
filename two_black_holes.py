@@ -19,11 +19,14 @@ else:
     print('No pad detected, use "j" key to jump')
     pad = None
 
+
 #global timekeeping
 ltick, diff, ldiff = 0, 0, 0
 jdiff, jfreq = 0, 0
 cntr = 0
 key_jump = False
+
+spd = 3
 
 #initial settings
 m1 = 6220
@@ -32,7 +35,7 @@ M = m1 + m2
 d1 = 2 * m1
 d2 = 2 * m2
 framerate = 25
-points = 100
+points = 50
 r = 6 * m1
 #r = 10 ** (2 / 3) * 6 * m1
 cm1 = m2 * r / M
@@ -50,13 +53,14 @@ caption2 = f'Černá díra 2 \n  Hmotnost = {m2} Sluncí \n  Průměr = {d2}'
 # Create a VisPy canvas and scene
 fullscreen = False if len(sys.argv) > 1 else True
 canvas = scene.SceneCanvas(keys='interactive', size=(1920, 1080), show=True,
-                           fullscreen=fullscreen)
+                           fullscreen=fullscreen, vsync=True, autoswap=False)
 grid = canvas.central_widget.add_grid()
 view = grid.add_view(row=1, col=1, row_span=5, col_span=5, bgcolor=(1, 0, 0, 0.))
 view.camera = scene.cameras.TurntableCamera(up='z', azimuth=0, elevation=25, distance=2.5 * bounds)
 # Generate the initial meshgrid data
 t = 0
 th = 0
+
 def get_gws(x, y, theta):
     return (amplitudec * np.cos(2 * np.arctan2(y, (x + 0.00001 * r / 3)) - 2 * theta + alpha * np.sqrt(x ** 2 + y ** 2)) /
             (20 * r / 3 + np.sqrt(x ** 2 + y ** 2)))
@@ -69,13 +73,16 @@ X, Y = np.meshgrid(x, y)
 Z = get_gws(X, Y, th)
 # Create a SurfacePlot to display the meshgrid
 surface = scene.visuals.SurfacePlot(x=X, y=Y, z=Z, shading='smooth', color=(0, 0.5, 1, 1))
+#surface = scene.visuals.SurfacePlot(x=X, y=Y, z=Z, shading='smooth', color=(0, 0.5, 1, 1))
 view.add(surface)
 
 # Create spheres representing the black holes
 black_hole1 = scene.visuals.Sphere(radius=d1, edge_color=(0, 0, 0, 1), color=(0, 0, 0, 1), parent=view.scene)
-black_hole1.transform = scene.transforms.STTransform(translate=(cm1 * np.cos(th + np.pi / 2), cm1 * np.sin(th + np.pi / 2), r))
+#black_hole1.transform = scene.transforms.STTransform(translate=(cm1 * np.cos(th + np.pi / 2), cm1 * np.sin(th + np.pi / 2), r))
 black_hole2 = scene.visuals.Sphere(radius=d2, edge_color=(0, 0, 0, 1), color=(0, 0, 0, 1), parent=view.scene)
-black_hole2.transform = scene.transforms.STTransform(translate=(cm2 * np.cos(th - np.pi / 2), cm2 * np.sin(th - np.pi / 2), r))
+#black_hole2.transform = scene.transforms.STTransform(translate=(cm2 * np.cos(th - np.pi / 2), cm2 * np.sin(th - np.pi / 2), r))
+view.add(black_hole1)
+view.add(black_hole2)
 
 # Top-left: Logo image
 img_data = io.read_png('Lisa_ESA_logo.png')
@@ -153,6 +160,9 @@ y_label = scene.visuals.Text('Skok', color='white', font_size=20, parent=view_ho
 x_label.pos = 2 * np.pi * 5 + 0.5, -0.5
 y_label.pos = -1.5, 0.8
 
+# Generate timescale
+t = np.linspace(0, 2 * np.pi * 5, 100)
+
 def pressed(key=None):
     global key_jump
     global diff, ltick
@@ -176,12 +186,13 @@ def update(event):
     global t, th, dtheta, r, freq
     global ltick, diff, ldiff, cntr
     global jfreq, jdiff
-    spd = 3
+    global spd
     #handle buttons
     btn = pressed()
 
     th += dtheta
     Z = get_gws(X, Y, th)
+    #surface.set_data(z=Z.astype(int))
     surface.set_data(z=Z)
     # update black holes positions
     pos1 = (cm1 * np.cos(th + np.pi / 2), cm1 * np.sin(th + np.pi / 2), r)
@@ -190,10 +201,8 @@ def update(event):
     black_hole2.transform = scene.transforms.STTransform(translate=pos2)
 
     # Fifth row
-    t = np.linspace(0, 2 * np.pi * 5, 1000)
     y = np.sin((1/spd)*t - (th*spd))
     plot_sine.set_data(np.c_[t, y])
-    #freq = (1/diff)
 
     # Sixth row - need to update
 
@@ -231,10 +240,16 @@ def update(event):
 Vzdálenost černých děr = {r}\n\
 \tFrekvence rotace = {freq:5.3f} Hz\n\
 \tFrekvence skoku  = {cfreq/spd:5.3f} Hz'''
+    canvas.update()
+
+def pps(event):
+    canvas.measure_fps()
 
 
 # Use a timer to animate the meshgrid
 timer = app.Timer(interval=1./framerate, connect=update, start=True)
+
+timer_pps = app.Timer(interval=1, connect=pps, start=True)
 
 @canvas.events.key_press.connect
 def on_key_press(event):
