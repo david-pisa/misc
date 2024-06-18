@@ -65,6 +65,48 @@ def get_gws(x, y, theta):
     return (amplitudec * np.cos(2 * np.arctan2(y, (x + 0.00001 * r / 3)) - 2 * theta + alpha * np.sqrt(x ** 2 + y ** 2)) /
             (20 * r / 3 + np.sqrt(x ** 2 + y ** 2)))
 
+
+# Define the logistic sigmoid function
+def logistic_sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
+def get_merge_ringdown(x, y, theta):
+    # Constants and inputs
+    m1 = 6220
+    m2 = 6220
+    M = m1 + m2
+    d1 = 2 * m1
+    d2 = 2 * m2
+    dsum = d1 + d2
+    framerate = 25
+    points = 250
+    r = 6 * m1
+    rfinal = 2 * M
+    cm1init = m2 * r / M
+    cm2init = m1 * r / M
+    cm1final = m2 * rfinal / M
+    cm2final = m1 * rfinal / M
+    freq = 32311 * M ** (-1) * (r / M) ** (-3 / 2)
+    dtheta = 2 * np.pi * freq / framerate
+    athetalen = 2 * np.pi / 4
+    mthetalen = 2 * np.pi / 4
+    rthetalen = 5.5 * np.pi
+    mthetaend = athetalen + mthetalen
+    rthetaend = mthetaend + rthetalen
+    thetathr = 3 * np.pi / 4
+    thetafactor = 2
+    bounds = 15 * r
+    amplitudec = 20 * r ** 2 / 3
+    c = 2 * np.pi * freq * r / (3 * 0.544331)
+    alpha = 2 * np.pi * freq / c
+
+     #Define the function
+    term1 = -logistic_sigmoid(-thetafactor * (-2 * (theta - thetathr))) * 10000 * amplitudec / (3 * dsum**2 + x**2 + y**2)
+    term2 = logistic_sigmoid(thetafactor * (-2 * (theta - thetathr) + alpha * np.sqrt(x**2 + y**2)))
+    term3 = logistic_sigmoid(x**2 + y**2 - 25)
+    term4 = (amplitudec * np.cos(2 * np.arctan2(y, x + 0.00001 * r / 3) - 2 * theta + alpha * np.sqrt(x**2 + y**2))) / (20 * r / 3 + np.sqrt(x**2 + y**2))
+    return term1 + term2 * term3 * term4
+
 # Generate data
 x = np.linspace(-bounds, bounds, points)
 y = np.linspace(-bounds, bounds, points)
@@ -225,9 +267,9 @@ def update(event):
     err = abs((jfreq - (dtheta*spd))/(dtheta*spd))
 
     if err < 0.25:
-        show_match('Shoda !')
+        show_match('Shoda!')
     elif err < 0.5:
-        show_match('Prihoriva...')
+        show_match('Přihořívá...')
     else:
         show_match('')
 
