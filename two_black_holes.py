@@ -7,6 +7,7 @@ from vispy.visuals import sphere
 import pygame
 import time
 import sys
+from random import randrange
 
 #pad init
 pygame.init()
@@ -23,32 +24,79 @@ else:
 #global timekeeping
 ltick, diff, ldiff = 0, 0, 0
 jdiff, jfreq = 0, 0
-cntr = 0
+cntr, mcntr = 0, 0
 key_jump = False
 
 spd = 3
 
-#initial settings
-m1 = 6220
-m2 = 6220
-M = m1 + m2
-d1 = 2 * m1
-d2 = 2 * m2
-framerate = 25
-points = 50
-r = 6 * m1
-#r = 10 ** (2 / 3) * 6 * m1
-cm1 = m2 * r / M
-cm2 = m1 * r / M
-freq = 32 * 311 * M ** (-1) * (r / M) ** (-1.5)
-dtheta = 2 * np.pi * freq / framerate
-bounds = 15 * r
-amplitudec = 20 * r ** 2 / 3
-c = 2 * np.pi * freq * r / (3 * 0.544331)
-alpha = 2 * np.pi * freq / c
+def logistic_sigmoid(x):
+    return 1 / (1 + np.exp(-x))
 
-caption1 = f'Černá díra 1 \n  Hmotnost = {m1} Sluncí \n  Průměr = {d1}'
-caption2 = f'Černá díra 2 \n  Hmotnost = {m2} Sluncí \n  Průměr = {d2}'
+class BHS():
+    def __init__(self, m1=6220, m2=6220, framerate=10, points=100):
+        self.m1 = m1
+        self.m2 = m2
+        self.framerate = framerate
+        self.points = points
+
+        self.regen()
+
+        self.recalc()
+
+    def recalc(self):
+        self.M = self.m1 + self.m2
+        self.d1 = 2 * self.m1
+        self.d2 = 2 * self.m2
+        self.dsum = self.d1 + self.d2
+        self.r = 6 * self.m1
+        self.cm1 = self.m2 * self.r / self.M
+        self.cm2 = self.m1 * self.r / self.M
+        self.freq = 32 * 311 * self.M ** (-1) * (self.r / self.M) ** (-1.5)
+        self.dtheta = 2 * np.pi * self.freq / self.framerate
+        self.bounds = 15 * self.r
+        self.amplitudec = 20 * self.r ** 2 / 3
+        self.c = 2 * np.pi * self.freq * self.r / (3 * 0.544331)
+        self.alpha = 2 * np.pi * self.freq / self.c
+
+    def regen(self):
+        self.m1 = randrange(4000, 7000)
+        self.m2 = randrange(4000, 7000)
+        self.recalc()
+
+    def get_gws(self, x, y, theta):
+        return (self.amplitudec * np.cos(2 * np.arctan2(y, (x + 0.00001 * self.r / 3)) - 2 * theta + self.alpha * np.sqrt(x ** 2 + y ** 2)) /
+            (20 * self.r / 3 + np.sqrt(x ** 2 + y ** 2)))
+
+    def get_merge_ringdown(self, x, y, theta):
+        rfinal = 2 * self.M
+        cm1init = self.m2 * self.r / self.M
+        cm2init = self.m1 * self.r / self.M
+        cm1final = self.m2 * rfinal / self.M
+        cm2final = self.m1 * rfinal / self.M
+        freq = 32311 * self.M ** (-1) * (self.r / self.M) ** (-3 / 2)
+        athetalen = 2 * np.pi / 4
+        mthetalen = 2 * np.pi / 4
+        rthetalen = 5.5 * np.pi
+        mthetaend = athetalen + mthetalen
+        rthetaend = mthetaend + rthetalen
+        thetathr = 3 * np.pi / 4
+        thetafactor = 2
+        c = 2 * np.pi * self.freq * self.r / (3 * 0.544331)
+        alpha = 2 * np.pi * self.freq / self.c
+
+         #Define the function
+        term1 = -logistic_sigmoid(-thetafactor * (-2 * (theta - thetathr))) * \
+            10000 * self.amplitudec / (3 * self.dsum**2 + x**2 + y**2)
+        term2 = logistic_sigmoid(thetafactor * (-2 * (theta - thetathr) + alpha * np.sqrt(x**2 + y**2)))
+        term3 = logistic_sigmoid(x**2 + y**2 - 25)
+        term4 = ((self.amplitudec * np.cos(2 * np.arctan2(y, x + 0.00001 * self.r / 3) - 2 * theta + alpha * np.sqrt(x**2 + y**2))) /
+            (20 * self.r / 3 + np.sqrt(x**2 + y**2)))
+        return term1 + term2 * term3 * term4
+
+bhs = BHS()
+
+caption1 = f'Černá díra 1 \n  Hmotnost = {bhs.m1} Sluncí \n  Průměr = {bhs.d1}'
+caption2 = f'Černá díra 2 \n  Hmotnost = {bhs.m2} Sluncí \n  Průměr = {bhs.d2}'
 
 # Create a VisPy canvas and scene
 fullscreen = False if len(sys.argv) > 1 else True
@@ -56,75 +104,36 @@ canvas = scene.SceneCanvas(keys='interactive', size=(1920, 1080), show=True,
                            fullscreen=fullscreen, vsync=True, autoswap=False)
 grid = canvas.central_widget.add_grid()
 view = grid.add_view(row=1, col=1, row_span=5, col_span=5, bgcolor=(1, 0, 0, 0.))
-view.camera = scene.cameras.TurntableCamera(up='z', azimuth=0, elevation=25, distance=2.5 * bounds)
+view.camera = scene.cameras.TurntableCamera(up='z', azimuth=0, elevation=25,
+                                            distance=2.5 * bhs.bounds)
 # Generate the initial meshgrid data
 t = 0
 th = 0
-
-def get_gws(x, y, theta):
-    return (amplitudec * np.cos(2 * np.arctan2(y, (x + 0.00001 * r / 3)) - 2 * theta + alpha * np.sqrt(x ** 2 + y ** 2)) /
-            (20 * r / 3 + np.sqrt(x ** 2 + y ** 2)))
-
-
-# Define the logistic sigmoid function
-def logistic_sigmoid(x):
-    return 1 / (1 + np.exp(-x))
-
-def get_merge_ringdown(x, y, theta):
-    # Constants and inputs
-    m1 = 6220
-    m2 = 6220
-    M = m1 + m2
-    d1 = 2 * m1
-    d2 = 2 * m2
-    dsum = d1 + d2
-    framerate = 25
-    points = 250
-    r = 6 * m1
-    rfinal = 2 * M
-    cm1init = m2 * r / M
-    cm2init = m1 * r / M
-    cm1final = m2 * rfinal / M
-    cm2final = m1 * rfinal / M
-    freq = 32311 * M ** (-1) * (r / M) ** (-3 / 2)
-    dtheta = 2 * np.pi * freq / framerate
-    athetalen = 2 * np.pi / 4
-    mthetalen = 2 * np.pi / 4
-    rthetalen = 5.5 * np.pi
-    mthetaend = athetalen + mthetalen
-    rthetaend = mthetaend + rthetalen
-    thetathr = 3 * np.pi / 4
-    thetafactor = 2
-    bounds = 15 * r
-    amplitudec = 20 * r ** 2 / 3
-    c = 2 * np.pi * freq * r / (3 * 0.544331)
-    alpha = 2 * np.pi * freq / c
-
-     #Define the function
-    term1 = -logistic_sigmoid(-thetafactor * (-2 * (theta - thetathr))) * 10000 * amplitudec / (3 * dsum**2 + x**2 + y**2)
-    term2 = logistic_sigmoid(thetafactor * (-2 * (theta - thetathr) + alpha * np.sqrt(x**2 + y**2)))
-    term3 = logistic_sigmoid(x**2 + y**2 - 25)
-    term4 = (amplitudec * np.cos(2 * np.arctan2(y, x + 0.00001 * r / 3) - 2 * theta + alpha * np.sqrt(x**2 + y**2))) / (20 * r / 3 + np.sqrt(x**2 + y**2))
-    return term1 + term2 * term3 * term4
+ths = 0
+state = 'game'
 
 # Generate data
-x = np.linspace(-bounds, bounds, points)
-y = np.linspace(-bounds, bounds, points)
+x = np.linspace(-bhs.bounds, bhs.bounds, bhs.points)
+y = np.linspace(-bhs.bounds, bhs.bounds, bhs.points)
 
 X, Y = np.meshgrid(x, y)
-Z = get_gws(X, Y, th)
+Z = bhs.get_gws(X, Y, th)
 # Create a SurfacePlot to display the meshgrid
 surface = scene.visuals.SurfacePlot(x=X, y=Y, z=Z, shading='smooth', color=(0, 0.5, 1, 1))
 #surface = scene.visuals.SurfacePlot(x=X, y=Y, z=Z, shading='smooth', color=(0, 0.5, 1, 1))
 view.add(surface)
 
 # Create spheres representing the black holes
-black_hole1 = scene.visuals.Sphere(radius=d1, edge_color=(0, 0, 0, 1), color=(0, 0, 0, 1), parent=view.scene)
-#black_hole1.transform = scene.transforms.STTransform(translate=(cm1 * np.cos(th + np.pi / 2), cm1 * np.sin(th + np.pi / 2), r))
-black_hole2 = scene.visuals.Sphere(radius=d2, edge_color=(0, 0, 0, 1), color=(0, 0, 0, 1), parent=view.scene)
-#black_hole2.transform = scene.transforms.STTransform(translate=(cm2 * np.cos(th - np.pi / 2), cm2 * np.sin(th - np.pi / 2), r))
+black_hole1 = scene.visuals.Sphere(radius=bhs.d1, edge_color=(0, 0, 0, 1),
+                                   color=(0, 0, 0, 1), parent=view.scene)
+black_hole2 = scene.visuals.Sphere(radius=bhs.d2, edge_color=(0, 0, 0, 1),
+                                   color=(0, 0, 0, 1), parent=view.scene)
 view.add(black_hole1)
 view.add(black_hole2)
+
+#Create big sphere for resulting black hole
+black_mhole = scene.visuals.Sphere(radius=bhs.dsum, edge_color=(0, 0, 0, 1),
+                                   color=(0, 0, 0, 1))
 
 # Top-left: Logo image
 img_data = io.read_png('Lisa_ESA_logo.png')
@@ -143,7 +152,7 @@ view_text.camera = scene.PanZoomCamera(aspect=1)
 view_text.camera.set_range()
 view_text.add(text)
 
-# Add target match  to the scene
+# Add target match to the scene
 view_match = grid.add_view(row=1, col=2, col_span=4)
 view_match.camera = scene.PanZoomCamera(aspect=1)
 view_match.camera.set_range()
@@ -164,7 +173,6 @@ view_text.add(text)
 # Fifth row: Sinusoidal curve
 plot_sine = scene.visuals.Line(color=(0.6, 0.039, 0.2, 0.8), width=5)
 view_sine = grid.add_view(row=5, col=0, col_span=7, bgcolor=(0, 1, 0, 0.))
-#view_sine.transform = scene.transforms.STTransform(translate=(0, 0))
 view_sine.add(plot_sine)
 view_sine.camera = scene.PanZoomCamera(aspect=1)
 view_sine.camera.set_range()
@@ -190,6 +198,7 @@ view_hops.camera = scene.PanZoomCamera(aspect=1)
 view_hops.camera.set_range()
 view_hops.camera.set_range(x=(-np.pi/2., 2 * np.pi * 5 + np.pi / 2.), y=(-1, 1))
 
+
 # Adding x-axis and y-axis
 x_axis = scene.visuals.Line(color='white', parent=view_hops.scene)
 y_axis = scene.visuals.Line(color='white', parent=view_hops.scene)
@@ -202,8 +211,9 @@ y_label = scene.visuals.Text('Skok', color='white', font_size=20, parent=view_ho
 x_label.pos = 2 * np.pi * 5 + 0.5, -0.5
 y_label.pos = -1.5, 0.8
 
+
 # Generate timescale
-t = np.linspace(0, 2 * np.pi * 5, 100)
+t = np.linspace(0, 2 * np.pi * 5, 250)
 
 def pressed(key=None):
     global key_jump
@@ -218,78 +228,114 @@ def pressed(key=None):
         btn = True
         ctick = time.time()
         ndiff = ctick - ltick
-        diff = ndiff if ndiff < 6 else diff
+        diff = ndiff if ndiff < 10 else diff
         ltick = ctick
         key_jump = False
     return btn
 
 # Update function for the animation
 def update(event):
-    global t, th, dtheta, r, freq
+    global t, th, ths, r, freq
     global ltick, diff, ldiff, cntr
     global jfreq, jdiff
-    global spd
-    #handle buttons
+    global spd, mcntr
+    global state
+    #handle buttons separately
     btn = pressed()
 
-    th += dtheta
-    Z = get_gws(X, Y, th)
-    #surface.set_data(z=Z.astype(int))
+    th += bhs.dtheta
+
+    pos1 = (bhs.cm1 * np.cos(th + np.pi / 2), bhs.cm1 * np.sin(th + np.pi / 2),
+            bhs.r)
+    pos2 = (bhs.cm2 * np.cos(th - np.pi / 2), bhs.cm2 * np.sin(th - np.pi / 2),
+            bhs.r)
+
+    if state == 'win':
+        Z = bhs.get_merge_ringdown(X, Y, th)
+        mcntr += 1
+    else:
+        # update black holes positions
+        black_hole1.transform = scene.transforms.STTransform(translate=pos1)
+        black_hole2.transform = scene.transforms.STTransform(translate=pos2)
+        #update ripples
+        Z = bhs.get_gws(X, Y, th)
     surface.set_data(z=Z)
-    # update black holes positions
-    pos1 = (cm1 * np.cos(th + np.pi / 2), cm1 * np.sin(th + np.pi / 2), r)
-    pos2 = (cm2 * np.cos(th - np.pi / 2), cm2 * np.sin(th - np.pi / 2), r)
-    black_hole1.transform = scene.transforms.STTransform(translate=pos1)
-    black_hole2.transform = scene.transforms.STTransform(translate=pos2)
 
-    # Fifth row
-    y = np.sin((1/spd)*t - (th*spd))
-    plot_sine.set_data(np.c_[t, y])
-
-    # Sixth row - need to update
+    ths += spd * bhs.dtheta
 
     cfreq = (1/diff) if diff > 0 else 0
-    jfreq = 2*np.pi*cfreq/framerate
+    jfreq = 2*np.pi*cfreq/bhs.framerate
 
     jdiff += jfreq
 
     if btn:
-        jdiff = 0
+        jdiff, cntr = 0, 0
         ldiff = diff
-        cntr = 0
 
     cntr += 1
 
-    if not btn and cntr > 100:
+    if not btn and cntr > 5*bhs.framerate:
         diff = (diff*np.exp(0.02)) if 0 < diff < 20 else 0
-        pass
 
-    err = abs((jfreq - (dtheta*spd))/(dtheta*spd))
+    err = abs((jfreq - (bhs.dtheta*spd))/(bhs.dtheta*spd))
 
-    if err < 0.25:
-        show_match('Shoda!')
-    elif err < 0.5:
-        show_match('Přihořívá...')
-    else:
-        show_match('')
+    if state=='game':
+        if err < 0.15:
+            show_match('Super tempo...')
+            mcntr += 1
+        elif err < 0.5:
+            show_match('Přihořívá...')
+            mcntr = 0
+        else:
+            show_match('')
+            mcntr = 0
 
-    #y = np.sin(t - jdiff)
-    y = np.sin(t * spd * (jfreq) - (jdiff))
-    plot_hops.set_data(np.c_[t, y])
-    # update text
-    text.text = f'''{caption1} \n  Poloha = ({pos1[0]:6.0f}, {pos1[1]:6.0f})\n\
+    if state=='game' and mcntr >= 200:
+        print('WIN!')
+        show_match('!!!Výhra!!!')
+        black_hole1.parent = None
+        black_hole2.parent = None
+        view.add(black_mhole)
+        y = np.zeros(250)
+        yj = np.zeros(250)
+        plot_sine.set_data(np.c_[t, y])
+        plot_hops.set_data(np.c_[t, yj])
+        state = 'win'
+        mcntr = th = ths = jdiff = diff = 0
+    elif state=='win' and mcntr >= 200:
+        bhs.regen()
+        black_mhole.parent = None
+        view.add(black_hole1)
+        view.add(black_hole2)
+        state = 'game'
+        mcntr = th = ths = jdiff = diff = 0
+
+    if state=='game':
+        # Fifth row
+        y = np.sin(t - (ths))
+        plot_sine.set_data(np.c_[t, y])
+
+        # Sixth row - need to update
+        yj = np.sin(t * (2 * np.pi * jfreq )  - jdiff)
+        #yj = np.sin(t * 2 * np.pi * cfreq / spd - jdiff)
+        #y = np.sin(t * spd * jfreq)
+        plot_hops.set_data(np.c_[t, yj])
+
+        # update text
+        text.text = f'''{caption1} \n  Poloha = ({pos1[0]:6.0f}, {pos1[1]:6.0f})\n\
 {caption2}\n  Poloha = ({pos2[0]:6.0f},{pos2[1]:6.0f})\n\
-Vzdálenost černých děr = {r}\n\
-\tFrekvence rotace = {freq:5.3f} Hz\n\
+Vzdálenost černých děr = {bhs.r}\n\
+\tFrekvence rotace = {bhs.freq:5.3f} Hz\n\
 \tFrekvence skoku  = {cfreq/spd:5.3f} Hz'''
-    canvas.update()
+    else:
+        text.text = f''
+    #canvas.update()
 
 def pps(event):
     canvas.measure_fps()
 
-
 # Use a timer to animate the meshgrid
-timer = app.Timer(interval=1./framerate, connect=update, start=True)
+timer = app.Timer(interval=(1./bhs.framerate), connect=update, start=True)
 
 timer_pps = app.Timer(interval=1, connect=pps, start=True)
 
